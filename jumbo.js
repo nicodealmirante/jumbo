@@ -1,44 +1,42 @@
-/**
- * Esta función se conecta directamente a la base de datos pública de Jumbo
- * y trae los resultados de búsqueda como un objeto de JavaScript.
- */
-async function buscarEnJumbo(termino) {
-  // 1. Construimos la URL de la API (es la que usa Jumbo internamente)
-  const url = `https://www.jumbo.com.ar/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(termino)}`;
+import fetch from 'node-fetch'; // Solo si usas Node antiguo, en Node 18+ no hace falta
+async function jumbo(query) {
+    const baseUrl = "https://www.jumbo.com.ar";
+    const endpoint = `${baseUrl}/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(query)}`;
 
-  try {
-    console.log(`Buscando "${termino}" en la API de Jumbo...`);
-    
-    // 2. Hacemos la petición (sin necesidad de abrir un navegador)
-    const respuesta = await fetch(url);
-    
-    if (!respuesta.ok) throw new Error("Error en la conexión");
+    try {
+        const response = await fetch(endpoint);
+        const data = await response.json();
 
-    const productosRaw = await respuesta.json();
+        const nombreBuscado = "Limpiador Multiuso Para Diluir Marina Rinde 5 Litros X 150ml";
 
-    // 3. Transformamos los datos complejos de la API a algo simple
-    return productosRaw.map(p => {
-      // Extraemos el precio y la disponibilidad del primer vendedor
-      const oferta = p.items[0].sellers[0].commertialOffer;
-      
-      return {
-        id: p.productId,
-        nombre: p.productName,
-        precio: oferta.Price,
-        link: "https://www.jumbo.com.ar" + p.link,
-        disponible: oferta.IsAvailable,
-        imagen: p.items[0].images[0].imageUrl
-      };
-    });
+        // Filtramos para encontrar el producto exacto
+        const productoExacto = data
+            .map(product => {
+                const item = product.items[0];
+                const seller = item.sellers[0].commertialOffer;
+                
+                return {
+                    id: product.productId,
+                    name: product.productName,
+                    price: seller.Price,
+                    link: `${baseUrl}${product.link}`,
+                    unavailable: !seller.IsAvailable
+                };
+            })
+            // AQUÍ FILTRAMOS: Solo el que coincida exactamente con el nombre
+            .find(p => p.name === nombreBuscado);
 
-  } catch (error) {
-    console.error("Hubo un problema:", error);
-    return [];
-  }
+        if (productoExacto) {
+            console.log(productoExacto.price);
+        } else {
+            console.log("❌ No se encontró exactamente ese producto.");
+        }
+        
+        return productoExacto;
+
+    } catch (error) {
+        console.error("Error:", error.message);
+    }
 }
 
-// --- EJEMPLO DE USO ---
-// Llamamos a la función y mostramos los resultados en la consola
-buscarEnJumbo("detergente").then(resultados => {
-  console.table(resultados); // Muestra una tabla linda en la terminal
-});
+jumbo("Limpiador Multiuso Para Diluir Marina");
