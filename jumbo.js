@@ -4,17 +4,24 @@ import pkg from "pg";
 const { Pool } = pkg;
 
 /* =======================
-   DB
+   CONFIG
 ======================= */
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// ⚠️ Ruta al JSON (ajustá si está en otro lugar)
+const JSON_PATH = "./HTTP_Jumbo_updated.json";
+
+// límites de seguridad
+const MIN_PRICE = 100;      // precio mínimo aceptado
+const MAX_VARIATION = 1.5;  // +50% / -50%
+
 /* =======================
    SQL
 ======================= */
 const selectProducts = `
-  SELECT id, name, price, list_price
+  SELECT id, name, price
   FROM products
   WHERE source = 'jumbo'
 `;
@@ -23,17 +30,13 @@ const updateProduct = `
   UPDATE products
   SET
     price = $1,
-    list_price = $2,
-    updated_at = NOW()
+    description = $2
   WHERE id = $3
 `;
 
 /* =======================
-   JSON
+   HELPERS
 ======================= */
-// puede ser ruta local o montado en Railway
-const JSON_PATH = "./HTTP_Jumbo_updated.json";
-
 function loadJson() {
   const raw = fs.readFileSync(JSON_PATH, "utf-8");
   return JSON.parse(raw);
@@ -48,9 +51,10 @@ async function run() {
   let skipped = 0;
 
   try {
+    // cargar JSON
     const jsonData = loadJson();
 
-    // armamos un map por id para lookup O(1)
+    // indexar por id (O(1))
     const jsonById = new Map(
       jsonData
         .filter((j) => j.id != null)
@@ -67,28 +71,52 @@ async function run() {
         continue;
       }
 
+      const oldPrice = Number(p.price);
       const newPrice = Number(jsonItem.price);
-      const newListPrice =
-        jsonItem.list_price != null
-          ? Number(jsonItem.list_price)
-          : newPrice;
+      const newDescription =
+        jsonItem.description !== undefined
+          ? String(jsonItem.description)
+          : null;
 
+      // ===== VALIDACIONES =====
+      if (!newPrice || isNaN(newPrice) || newPrice < MIN_PRICE) {
+        console.log(
+          `⚠️ SALTADO (precio inválido): ${p.name} → ${newPrice}`
+        );
+        skipped++;
+        continue;
+      }
+
+      const ratio = newPrice / oldPrice;
+      if (oldPrice > 0 && (ratio < 1 / MAX_VARIATION || ratio > MAX_VARIATION)) {
+        console.log(
+          `⚠️ SALTADO (variación extrema): ${p.name} | ${oldPrice} → ${newPrice}`
+        );
+        skipped++;
+        continue;
+      }
+
+      // ===== UPDATE =====
       if (
-        Number(p.price) !== newPrice ||
-        Number(p.list_price) !== newListPrice
+        oldPrice !== newPrice ||
+        (newDescription && newDescription !== "")
       ) {
         await client.query(updateProduct, [
           newPrice,
-          newListPrice,
+          newDescription,
           p.id,
         ]);
 
         console.log(
-          `✅ ${p.name} | ${p.price} → ${newPrice}`
+          `✅ ${p.name} | ${oldPrice} → ${newPrice}` +
+          (newDescription ? ` | desc: ${newDescription}` : "")
         );
         updated++;
       }
     }
+  } catch (e) {
+    console.error("❌ ERROR GENERAL:", e);
+    throw e;
   } finally {
     client.release();
     await pool.end();
@@ -96,9 +124,12 @@ async function run() {
 
   console.log("====== RESUMEN ======");
   console.log("Actualizados:", updated);
-  console.log("Sin match:", skipped);
+  console.log("Saltados:", skipped);
 }
 
+/* =======================
+   START
+======================= */
 run().catch((e) => {
   console.error(e);
   process.exit(1);
