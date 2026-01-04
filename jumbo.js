@@ -41,7 +41,7 @@ const updatePrice = `
    Jumbo API
 ======================= */
 async function fetchJumbo(query) {
-  const url = `https://www.jumbo.com.ar/api/catalog_system/pub/products/search/?ft=${encodeURIComponent(
+  const url = `ratoneando-go-production.up.railway.app${encodeURIComponent(
     query
   )}`;
 
