@@ -1,0 +1,13 @@
+{
+  "name": "jumbo-scraper",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Scraper de Jumbo usando su API interna",
+  "main": "jumbo.js",
+  "scripts": {
+    "start": "node jumbo.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
